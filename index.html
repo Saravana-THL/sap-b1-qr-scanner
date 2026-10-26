@@ -1,144 +1,70 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
+  <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SAP B1 Customer QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 600px;
+      max-width: 520px;
       margin: 20px auto;
       padding: 16px;
     }
-    button, input {
-      width: 100%;
-      padding: 14px;
-      margin: 8px 0;
+    input, button {
       box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      margin: 7px 0;
       font-size: 16px;
     }
-    #reader { width: 100%; }
-    #status {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      padding: 10px 0;
-    }
+    button { cursor: pointer; }
+    #reader { width: 100%; margin-top: 12px; }
+    #status { white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
-  <h2>SAP B1 Customer QR Scanner</h2>
+  <h2>SAP B1 QR Scanner</h2>
+  <p>Scan the Crystal Reports QR code to open the pre-filled Google Form.</p>
 
-  <button id="startButton" onclick="startScanner()">
-    Start Scanner
+  <button onclick="startScanner()">Start QR Scanner</button>
+  <div id="reader"></div>
+
+  <h3>Or enter scanned QR text</h3>
+  <input id="qrText"
+    placeholder="CardCode=C20001;CardName=ABC Trading LLC">
+  <button onclick="processQR(document.getElementById('qrText').value)">
+    Open Google Form
   </button>
 
-  <div id="reader"></div>
-  <p id="status">Ready to scan.</p>
+  <p id="status" role="status"></p>
 
   <script>
-    // Replace with your actual Google Form details.
+    // REPLACE THESE VALUES WITH YOUR ACTUAL GOOGLE FORM DETAILS.
     const FORM_BASE =
-      'https://script.google.com/macros/s/AKfycbwsQ1gmYeoesR-jsIcM-HKq5db8NkHP91BsiFwbYxsmAFsOJBwixKRBVuIrWe3zJmTa/exec';
+      'https://docs.google.com/forms/d/e/1FAIpQLSd7JMDBmM-tepHj3LMQMH6qe2HyA0gabmplcG1UnDgC2w2xtw/viewform';
 
     const CARDCODE_ENTRY = 'entry.222688078';
     const CARDNAME_ENTRY = 'entry.2091106023';
 
-    let scanner;
-    let busy = false;
+    let scanner = null;
+    let handled = false;
 
-    function setStatus(message) {
-      document.getElementById('status').textContent = message;
-    }
+    function processQR(raw) {
+      const status = document.getElementById('status');
+      status.textContent = '';
 
-    async function startScanner() {
-      const button = document.getElementById('startButton');
-      button.disabled = true;
-
-      try {
-        if (typeof Html5Qrcode === 'undefined') {
-          throw new Error(
-            'QR scanner library failed to load. Check internet access.'
-          );
-        }
-
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error(
-            'Camera access is unavailable. Open the HTTPS website in Chrome.'
-          );
-        }
-
-        if (scanner) {
-          try {
-            await scanner.stop();
-          } catch (e) {}
-          try {
-            scanner.clear();
-          } catch (e) {}
-        }
-
-        busy = false;
-        scanner = new Html5Qrcode('reader', {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE
-          ],
-          verbose: false
-        });
-
-        setStatus('Starting camera...');
-
-        await scanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 15,
-            qrbox: function(width, height) {
-              const size = Math.floor(
-                Math.min(width, height) * 0.85
-              );
-              return { width: size, height: size };
-            },
-            aspectRatio: 1.0,
-            disableFlip: false
-          },
-          async function(decodedText) {
-            if (busy) return;
-            busy = true;
-
-            setStatus('QR detected!\nData: ' + decodedText);
-
-            try {
-              await scanner.stop();
-            } catch (e) {}
-
-            openGoogleForm(decodedText);
-          },
-          function() {
-            // No QR detected in this frame; continue scanning.
-          }
-        );
-
-        setStatus(
-          'Camera started. Hold the QR code steady inside the box. ' +
-          'Move closer or farther away until it is in focus.'
-        );
-
-      } catch (error) {
-        setStatus('Scanner error: ' + error.message);
-        button.disabled = false;
-      }
-    }
-
-    function openGoogleForm(raw) {
+      // Expected format:
+      // CardCode=C20001;CardName=ABC Trading LLC
       const fields = {};
 
-      raw.split(/[;\r\n]+/).forEach(part => {
+      raw.split(';').forEach(part => {
         const i = part.indexOf('=');
         if (i < 0) return;
 
         const key = part.slice(0, i).trim().toLowerCase();
         const value = part.slice(i + 1).trim();
-
         fields[key] = value;
       });
 
@@ -146,32 +72,52 @@
       const cardName = fields.cardname;
 
       if (!cardCode || !cardName) {
-        setStatus(
-          'QR detected, but CardCode or CardName is missing.\n' +
-          'Decoded data: ' + raw
-        );
-        busy = false;
-        document.getElementById('startButton').disabled = false;
+        status.textContent =
+          'Invalid QR data. CardCode or CardName is missing.';
+        return;
+      }
+
+      const url = new URL(FORM_BASE);
+      url.searchParams.set('usp', 'pp_url');
+      url.searchParams.set(CARDCODE_ENTRY, cardCode);
+      url.searchParams.set(CARDNAME_ENTRY, cardName);
+
+      status.textContent = 'Opening Google Form...';
+      window.top.location.href = url.toString();
+    }
+
+    async function startScanner() {
+      const status = document.getElementById('status');
+
+      if (typeof Html5Qrcode === 'undefined') {
+        status.textContent =
+          'Scanner library did not load. Check your internet connection.';
         return;
       }
 
       try {
-        const url = new URL(FORM_BASE);
-        url.searchParams.set('usp', 'pp_url');
-        url.searchParams.set(CARDCODE_ENTRY, cardCode);
-        url.searchParams.set(CARDNAME_ENTRY, cardName);
+        handled = false;
+        scanner = new Html5Qrcode('reader');
 
-        setStatus(
-          'CardCode: ' + cardCode +
-          '\nCardName: ' + cardName +
-          '\nOpening Google Form...'
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async decodedText => {
+            if (handled) return;
+            handled = true;
+
+            try {
+              await scanner.stop();
+            } catch (e) {}
+
+            processQR(decodedText);
+          },
+          () => {}
         );
-
-        window.location.href = url.toString();
-      } catch (error) {
-        setStatus('Unable to open form: ' + error.message);
-        busy = false;
-        document.getElementById('startButton').disabled = false;
+      } catch (e) {
+        status.textContent =
+          'Could not start the camera. Allow camera access or paste the QR text above. ' +
+          e.message;
       }
     }
   </script>
