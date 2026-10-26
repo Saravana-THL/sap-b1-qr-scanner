@@ -1,0 +1,81 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAP B1 QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: Arial; max-width: 500px; margin: 20px auto; padding: 16px; }
+    button, input { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; }
+    #reader { width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>SAP B1 Customer QR Scanner</h2>
+  <button id="start">Start Scanner</button>
+  <div id="reader"></div>
+  <p id="status">Ready to scan.</p>
+
+  <script>
+    const FORM_BASE =
+      'https://docs.google.com/forms/d/e/1FAIpQLSd7JMDBmM-tepHj3LMQMH6qe2HyA0gabmplcG1UnDgC2w2xtw/viewform';
+    const CARDCODE_ENTRY = 'entry.222688078';
+    const CARDNAME_ENTRY = 'entry.2091106023';
+
+    let scanner;
+    let busy = false;
+
+    document.getElementById('start').onclick = async () => {
+      const status = document.getElementById('status');
+
+      if (!window.isSecureContext ||
+          !navigator.mediaDevices?.getUserMedia) {
+        status.textContent = 'Open this scanner using its HTTPS website URL.';
+        return;
+      }
+
+      try {
+        scanner = new Html5Qrcode('reader');
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async text => {
+            if (busy) return;
+            busy = true;
+
+            try {
+              await scanner.stop();
+              const fields = {};
+
+              text.split(';').forEach(part => {
+                const i = part.indexOf('=');
+                if (i > 0) {
+                  fields[part.slice(0, i).trim().toLowerCase()] =
+                    part.slice(i + 1).trim();
+                }
+              });
+
+              if (!fields.cardcode || !fields.cardname) {
+                throw new Error('CardCode or CardName is missing.');
+              }
+
+              const url = new URL(FORM_BASE);
+              url.searchParams.set('usp', 'pp_url');
+              url.searchParams.set(CARDCODE_ENTRY, fields.cardcode);
+              url.searchParams.set(CARDNAME_ENTRY, fields.cardname);
+
+              window.location.assign(url.toString());
+            } catch (e) {
+              busy = false;
+              status.textContent = e.message;
+            }
+          }
+        );
+      } catch (e) {
+        status.textContent = 'Camera error: ' + e.name + ' — ' + e.message;
+      }
+    };
+  </script>
+</body>
+</html>
