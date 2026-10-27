@@ -1,9 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SAP B1 Customer QR Feedback</title>
+
   <script src="https://unpkg.com/html5-qrcode"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -11,6 +14,7 @@
       margin: 20px auto;
       padding: 16px;
     }
+
     button {
       width: 100%;
       padding: 14px;
@@ -18,7 +22,9 @@
       box-sizing: border-box;
       font-size: 16px;
     }
+
     #reader { width: 100%; }
+
     #status {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -26,6 +32,7 @@
     }
   </style>
 </head>
+
 <body>
   <h2>SAP B1 Customer QR Feedback</h2>
 
@@ -38,12 +45,17 @@
   <div id="reader"></div>
 
   <script>
-    const FORM_BASE =
-      'https://docs.google.com/forms/d/e/1FAIpQLSd7JMDBmM-tepHj3LMQMH6qe2HyA0gabmplcG1UnDgC2w2xtw/viewform';
+    // Microsoft Forms base URL
+    const FORM_BASE = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx';
 
-    const CARDCODE_ENTRY = 'entry.222688078';
-    const CARDNAME_ENTRY = 'entry.2091106023';
+    const FORM_ID = 'SW_cn5vKT0Gvc1hx-5gtamCER4UFLLRHmsQbN0WcvppURE1VSlo0OFNQM0I3STRIT0pZWlgwOUhUOS4u';
 
+    // Microsoft Forms pre-filled question parameters
+    const CARDCODE_ENTRY = 'r68452014633b4c96bf6f9b0e968d7e32';
+
+    const CARDNAME_ENTRY = 'r5cd0142f11ee41b6815f5c6ff9a68828';
+
+    // Feedback remains blank for the customer
     let scanner;
     let busy = false;
 
@@ -51,46 +63,51 @@
       document.getElementById('status').textContent = message;
     }
 
-    // Read customer details directly from the GitHub URL.
+    // Read customer details from the page URL
     function processPageUrl() {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(
+        window.location.search
+      );
 
       const cardCode = params.get('cardCode');
       const cardName = params.get('cardName');
 
       if (cardCode && cardName) {
-        openGoogleForm(cardCode, cardName);
+        openMicrosoftForm(cardCode, cardName);
         return;
       }
 
-      // No customer parameters: retain the camera scanner.
       setStatus(
-        'No customer details found in the URL. ' +
-        'You can scan a QR Code using the camera below.'
+        'Scan the customer QR Code using the camera below.'
       );
 
       document.getElementById('startButton').hidden = false;
     }
 
-    function openGoogleForm(cardCode, cardName) {
+    // Build the Microsoft Forms pre-filled URL
+    function openMicrosoftForm(cardCode, cardName) {
       if (!cardCode || !cardName) {
-        setStatus('CardCode or CardName is missing.');
+        setStatus('Customer Code or Customer Name is missing.');
         return;
       }
 
       try {
         const url = new URL(FORM_BASE);
 
-        url.searchParams.set('usp', 'pp_url');
+        url.searchParams.set('id', FORM_ID);
         url.searchParams.set(CARDCODE_ENTRY, cardCode);
         url.searchParams.set(CARDNAME_ENTRY, cardName);
 
-        setStatus('Opening Google Form...');
+        setStatus(
+          'Opening Microsoft Forms for ' + cardCode + '...'
+        );
 
-        // Automatically open the prefilled Google Form.
-        window.location.replace(url.toString());
+        window.location.assign(url.toString());
+
       } catch (error) {
-        setStatus('Unable to open Google Form: ' + error.message);
+        setStatus(
+          'Unable to open Microsoft Forms: ' + error.message
+        );
       }
     }
 
@@ -117,6 +134,7 @@
         });
 
         busy = false;
+
         setStatus('Starting camera...');
 
         await scanner.start(
@@ -127,10 +145,12 @@
               const size = Math.floor(
                 Math.min(width, height) * 0.85
               );
+
               return { width: size, height: size };
             },
             aspectRatio: 1.0
           },
+
           async function(decodedText) {
             if (busy) return;
             busy = true;
@@ -139,45 +159,55 @@
               await scanner.stop();
             } catch (e) {}
 
-            // Scanner fallback accepts a URL or
-            // CardCode=C0001;CardName=ABC Trading.
+            let code = null;
+            let name = null;
+
+            // QR containing a URL with cardCode/cardName
             try {
               const scannedUrl = new URL(decodedText);
 
-              const code = scannedUrl.searchParams.get('cardCode');
-              const name = scannedUrl.searchParams.get('cardName');
+              code = scannedUrl.searchParams.get('cardCode');
+              name = scannedUrl.searchParams.get('cardName');
 
-              if (code && name) {
-                openGoogleForm(code, name);
-                return;
-              }
             } catch (e) {}
 
-            const fields = {};
+            // QR containing CardCode=C0001;CardName=ABC Trading
+            if (!code || !name) {
+              const fields = {};
 
-            decodedText.split(/[;\r\n]+/).forEach(part => {
-              const i = part.indexOf('=');
-              if (i < 0) return;
+              decodedText.split(/[;\r\n]+/).forEach(part => {
+                const i = part.indexOf('=');
 
-              fields[part.slice(0, i).trim().toLowerCase()] =
-                part.slice(i + 1).trim();
-            });
+                if (i < 0) return;
 
-            if (fields.cardcode && fields.cardname) {
-              openGoogleForm(fields.cardcode, fields.cardname);
+                fields[
+                  part.slice(0, i).trim().toLowerCase()
+                ] = part.slice(i + 1).trim();
+              });
+
+              code = fields.cardcode || null;
+              name = fields.cardname || null;
+            }
+
+            if (code && name) {
+              openMicrosoftForm(code, name);
             } else {
               setStatus(
-                'QR detected, but CardCode or CardName is missing.\n' +
-                decodedText
+                'QR detected, but Customer Code or Customer Name ' +
+                'is missing.\n' + decodedText
               );
+
               busy = false;
               button.disabled = false;
             }
           },
+
           function() {}
         );
 
-        setStatus('Camera started. Point it at the QR Code.');
+        setStatus(
+          'Camera started. Point it at the customer QR Code.'
+        );
 
       } catch (error) {
         setStatus('Scanner error: ' + error.message);
@@ -185,7 +215,7 @@
       }
     }
 
-    // Run automatically when the page loads.
+    // Run automatically when the page loads
     processPageUrl();
   </script>
 </body>
